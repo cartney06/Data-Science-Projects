@@ -8,12 +8,13 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(ggplot2)
+library(plyr)
 library(dplyr)
-library(tmap)
-library(sf)
-library(raster)
-library(spData)
+library(tigris)
 library(fmsb)
+library(broom)
+library(httr)
+library(rgdal)
 ```
 
 ## Commuting in NYC
@@ -21,17 +22,26 @@ library(fmsb)
 ### Load Data
 
 ```{r}
-data <- read.csv("/Users/adthom0225/Desktop/Syracuse/Data Science Masters/Syracuse/Spring 2019/IST 719/Project/nyc_census_tracts.csv")
+#For Windows PC
+data <- read.csv("C:/Users/cartn/Desktop/Syracuse/IST 719/Project/nyc_census_tracts.csv")
 ```
 
 ### Data Cleaning
+
+First, we will add Neighborhood Code to data set
+
+```{r}
+censusKeys <- read.csv("C:/Users/cartn/Desktop/Syracuse/IST 719/Project/nyc2010census_tabulation_equiv.csv")
+censusKeys <- censusKeys[, c("CensusTract", "NTACode")]
+data <- merge(data, censusKeys, by="CensusTract")
+```
+
 
 Next we will reformat data to exclude Staten Island
 ```{r}
 dataNYC <- filter(data, Borough != 'Staten Island')
 #Gather complete Cases only
 dataNYC <- dataNYC[complete.cases(dataNYC), ]
-
 ```
 
 Now, we will create an index for commute type
@@ -44,10 +54,11 @@ dataNYC$WalkIndex <- dataNYC$Walk/mean(dataNYC$Walk, na.rm=TRUE)
 dataNYC$BikeIndex <- dataNYC$OtherTransp/mean(dataNYC$OtherTransp, na.rm=TRUE)
 ```
 
-We will create a column for which ethnicty is marjority for a census tract
+We will create a column for which ethnicty aand mode of transportation is marjority for a census tract
 
 ```{r}
 dataNYC$Dominant_Ethnicity <- colnames(dataNYC[7:11])[max.col(dataNYC[7:11],ties.method="first")]
+dataNYC$Dominant_Transportation <- colnames(dataNYC[24:28])[max.col(dataNYC[24:28],ties.method="first")]
 ```
 
 Next we will convert ethnicity data to raw numbers
@@ -91,7 +102,7 @@ walkOI <- dataNYC[dataNYC$WalkIndex >= 2,]
 bikeOI <- dataNYC[dataNYC$BikeIndex >= 2,]
 ```
 
-### Question 1: Which New Yorkers have the longest commute times?
+### Commute Time Dirstribution by Borough
 
 ```{r}
 #Boxplot
@@ -100,6 +111,19 @@ g <- g + geom_boxplot(alpha=0.8, show.legend = FALSE) + coord_flip()
 g <- g + labs(y="Average Commute", title = "Mean Commute Time", subtitle = "By Borough")  + scale_fill_brewer(palette="Blues") + theme_bw()
 g
 ```
+```{r}
+#Density with facets
+#Median commute time for each borough
+
+cdat <- ddply(dataNYC, "Borough", summarise, MeanCommute.mean=mean(MeanCommute))
+
+g <- ggplot(dataNYC, aes(x=MeanCommute, fill=Borough)) + geom_density(alpha=0.8, show.legend = FALSE) + facet_grid(Borough ~ .) + scale_fill_brewer(palette="Blues") + theme_bw()
+g <- g + geom_vline(data=cdat, aes(xintercept=MeanCommute.mean),linetype="dashed", size=1, colour="red")
+g <- g + labs(y="Average Commute", title = "Mean Commute Time", subtitle = "By Borough")
+g
+```
+
+### Question: Does Income correlate with Commute Times?
 
 ```{r}
 #Scatterplot of commute times by income
@@ -118,19 +142,18 @@ g <- g + labs(y="Average Commute", x= "Dominant Ethnicity in Census Tract",title
 g
 ```
 
+### Question: Which New Yorkers have the longest commute times?
+
+#### NYC Map (Less Staten Island)
+
+Next, we need to fill in the map. Convert censustracts to NYC neighborhoods.
 
 ```{r}
-tm_shape(lnd) +
-  tm_fill() +
-  tm_borders() 
+#Geojson file of NYC neighborhoods
+r <- GET('http://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/nynta/FeatureServer/0/query?where=1=1&outFields=*&outSR=4326&f=geojson')
 ```
 
 ```{r}
-library(httr)
-library(broom)
-
-r <- GET('http://data.beta.nyc//dataset/0ff93d2d-90ba-457c-9f7e-39e47bf2ac5f/resource/35dd04fb-81b3-479b-a074-a27a37888ce7/download/d085e2f8d0b54d4590b1e7d1f35594c1pediacitiesnycneighborhoods.geojson')
-
 nyc_neighborhoods <- readOGR(content(r,'text'), 'OGRGeoJSON', verbose = F)
 ```
 
@@ -139,26 +162,51 @@ summary(nyc_neighborhoods)
 ```
 
 ```{r}
-nyc_neighborhoods_df <- tidy(nyc_neighborhoods)
+#Get boroughs excluding Staten Island
+nyc_neighborhoods <- nyc_neighborhoods[!(nyc_neighborhoods$BoroName %in%  "Staten Island"),]
 ```
 
 ```{r}
-ggplot() + 
-  geom_polygon(data=nyc_neighborhoods_df, aes(x=long, y=lat, group=group))
+nyc_neighborhoods_df <- fortify(nyc_neighborhoods)
+nyc_neighborhoods_df2 <- data.frame(nyc_neighborhoods)
+nyc_neighborhoods_df2 <- nyc_neighborhoods_df2[,c("OBJECTID", "NTACode")]
+dataNYC <- merge(dataNYC, nyc_neighborhoods_df2, by="NTACode")
 ```
 
-Create the shp gile for New York City
 ```{r}
-# Create shp file
-shp <- st_read("path_to_downloaded_file/acs_2012_2016_county_us_B27001.shp",
-               stringsAsFactors = FALSE) %>%
-  rename(uninsured_2012 = un_2012,
-         uninsured_2016 = un_2016,
-         uninsured_diff = unnsrd_) %>%
-  mutate(STFIPS = stringr::str_sub(GEOID, 1, 2))
+#Make a map of the boundaries
+ggplot() + geom_map(data=nyc_neighborhoods_df, map=nyc_neighborhoods_df, aes(x=long, y=lat, map_id=id), fill = "grey", color="White", size=0.1) + theme_void() + coord_map()
 ```
 
-#### Question #2: How do New Yorkers get to work?
+Next, we will merge data with our map.
+
+Aggregate commute time data in dataNYC by OBJECTID
+
+```{r}
+#Aggregate commute time data by OBJECTID
+dataNYC$TotalCommute <- dataNYC$MeanCommute*dataNYC$TotalPop
+commuteDF <- dataNYC[,c("OBJECTID", "TotalCommute", "TotalPop")]
+
+#Aggregate by OBJECTID
+aggdata <-aggregate(commuteDF[,c("TotalCommute", "TotalPop")], by=list(id=commuteDF$OBJECTID), FUN="sum", na.rm=TRUE)
+aggdata$MeanCommute <- aggdata$TotalCommute/aggdata$TotalPop
+```
+
+Merge data frames
+```{r}
+nyc_neighborhoods_fortified <- merge(nyc_neighborhoods_df, aggdata, by="id")
+```
+
+Finally plot data
+```{r}
+#Make a map of the boundaries
+
+ggplot() + geom_map(data=nyc_neighborhoods_fortified, map=nyc_neighborhoods_df, aes(x=long, y=lat, map_id=id, fill=MeanCommute), color="White", size=0.1) + theme_void() + coord_map()  + guides(fill = guide_colourbar(barwidth = 0.5, barheight = 10, title="Mean Commute (in Minutes)")) + scale_fill_continuous(trans = 'reverse')
+```
+
+##################################################################################################################
+
+#### Commute Type Distributions
 
 ```{r}
 #Create a dataframe of how NYC gets to work
@@ -357,10 +405,11 @@ g1 <- ggplot(bike, aes(fill=category, ymax=ymax, ymin=ymin, xmax=4, xmin=3)) +
 g1
 ```
 
-#### Question #3: For each neighborhood that over indexe for the above, what do we know about those neighborhoods?
+#### Question #3: For each neighborhood that over indexes for the above, what do we know about those neighborhoods?
 
+##### Ethnicity
 
-##### Drive 
+###### Drive 
 
 ```{r}
 #Create Data Frame of Ethnicity Percentage
@@ -369,31 +418,50 @@ a1 <- data.frame((sum(driveOI$Hispanic_total)/sum(driveOI$TotalPop))*100, (sum(d
 (sum(driveOI$Native_total)/sum(driveOI$TotalPop))*100,
 (sum(driveOI$Asian_total)/sum(driveOI$TotalPop))*100
 )
+
+#Create a dataframe for NYC Ethnicity average
+allNYC <- data.frame((sum(dataNYC$Hispanic_total)/sum(dataNYC$TotalPop))*100, (sum(dataNYC$White_total)/sum(dataNYC$TotalPop))*100,
+(sum(dataNYC$Black_total)/sum(dataNYC$TotalPop))*100,               
+(sum(dataNYC$Native_total)/sum(dataNYC$TotalPop))*100,
+(sum(dataNYC$Asian_total)/sum(dataNYC$TotalPop))*100
+)
+#Rename columns
+colnames(a1) <- c("Hispanic" , "White", "Black", "Native", "Asian")
+colnames(allNYC) <- c("Hispanic" , "White", "Black", "Native", "Asian")
+
+#Rename Rows
+rownames(allNYC) <- c("NYC")
+rownames(a1) <- c("Driving")
+
+#Merge two dataframes together
+a1 <- rbind(a1, allNYC)
+
 #Rename columns
 colnames(a1) <- c("Hispanic" , "White", "Black", "Native", "Asian")
 
 #Make min and max values for each column
 a1 <- rbind(rep(50,5) , rep(0,5) , a1)
-```
 
-Now we will make out radar chart
-
-```{r}
 #Custom the radarChart 
-radarchart(a1  , axistype=2 , 
+colors_border=c( rgb(0.2,0.5,0.5,0.9), rgb(0.9,0.1,0.1,1.0) )
+colors_in=c( rgb(0.2,0.5,0.5,0.4), rgb(0.9,0.1,0.1,0.5) )
+radarchart(a1, axistype=2, 
  
     #custom polygon
-    pcol=rgb(0.2,0.5,0.5,0.9) , pfcol=rgb(0.2,0.5,0.5,0.5) , plwd=4 , 
+    pcol=colors_border , pfcol=colors_in , plwd=4 , plty=1,
  
     #custom the grid
-    cglcol="grey", cglty=1, axislabcol="grey", caxislabels=seq(0,50,10), cglwd=0.8,
+    cglcol="black", cglty=1, axislabcol="black", caxislabels=seq(0,40,10), cglwd=0.8,
  
     #custom labels
     vlcex=0.8 
     )
+legend(x=0.7, y=1.1, legend = rownames(a1[-c(1,2),]), bty = "n", pch=20 , col=colors_in , text.col = "grey", cex=1.2, pt.cex=3)
 ```
 
-##### Walk
+
+
+###### Walk
 
 ```{r}
 #Create Data Frame of Ethnicity Percentage
@@ -402,30 +470,35 @@ a1 <- data.frame((sum(walkOI$Hispanic_total)/sum(walkOI$TotalPop))*100, (sum(wal
 (sum(walkOI$Native_total)/sum(walkOI$TotalPop))*100,
 (sum(walkOI$Asian_total)/sum(walkOI$TotalPop))*100
 )
-#Rename columns
+#Rename columns and rows
 colnames(a1) <- c("Hispanic" , "White", "Black", "Native", "Asian")
+rownames(a1) <- c("Walking")
+
+#Merge two dataframes together
+a1 <- rbind(a1, allNYC)
 
 #Make min and max values for each column
 a1 <- rbind(rep(60,5) , rep(0,5) , a1)
-```
 
-Now we will make our radar chart
-```{r}
 #Custom the radarChart 
-radarchart(a1  , axistype=2 , 
+colors_border=c( rgb(0.2,0.5,0.5,0.9), rgb(0.9,0.1,0.1,1.0) )
+colors_in=c( rgb(0.2,0.5,0.5,0.4), rgb(0.9,0.1,0.1,0.5) )
+radarchart(a1, axistype=2 , 
  
     #custom polygon
-    pcol=rgb(0.2,0.5,0.5,0.9) , pfcol=rgb(0.2,0.5,0.5,0.5) , plwd=4 , 
+    pcol=colors_border , pfcol=colors_in , plwd=4 , plty=1,
  
     #custom the grid
-    cglcol="grey", cglty=1, axislabcol="grey", caxislabels=seq(0,100,10), cglwd=0.8,
+    cglcol="black", cglty=1, axislabcol="black", caxislabels=seq(0,60,10), cglwd=0.8,
  
     #custom labels
     vlcex=0.8 
     )
+legend(x=0.7, y=1.1, legend = rownames(a1[-c(1,2),]), bty = "n", pch=20 , col=colors_in , text.col = "grey", cex=1.2, pt.cex=3)
 ```
 
-##### Carpool 
+
+###### Carpool 
 
 ```{r}
 #Create Data Frame of Ethnicity Percentage
@@ -436,28 +509,32 @@ a1 <- data.frame((sum(carpoolOI$Hispanic_total)/sum(carpoolOI$TotalPop))*100, (s
 )
 #Rename columns
 colnames(a1) <- c("Hispanic" , "White", "Black", "Native", "Asian")
+rownames(a1) <- c("Carpool")
+
+#Merge two dataframes together
+a1 <- rbind(a1, allNYC)
 
 #Make min and max values for each column
 a1 <- rbind(rep(50,5) , rep(0,5) , a1)
-```
 
-Now we will make our radar chart
-```{r}
 #Custom the radarChart 
-radarchart(a1  , axistype=2 , 
+colors_border=c( rgb(0.2,0.5,0.5,0.9), rgb(0.9,0.1,0.1,1.0) )
+colors_in=c( rgb(0.2,0.5,0.5,0.4), rgb(0.9,0.1,0.1,0.5) )
+radarchart(a1, axistype=2 , 
  
     #custom polygon
-    pcol=rgb(0.2,0.5,0.5,0.9) , pfcol=rgb(0.2,0.5,0.5,0.5) , plwd=4 , 
+    pcol=colors_border , pfcol=colors_in , plwd=4 , plty=1,
  
     #custom the grid
-    cglcol="grey", cglty=1, axislabcol="grey", caxislabels=seq(0,100,10), cglwd=0.8,
+    cglcol="black", cglty=1, axislabcol="black", caxislabels=seq(0,50,10), cglwd=0.8,
  
     #custom labels
     vlcex=0.8 
     )
+legend(x=0.7, y=1.1, legend = rownames(a1[-c(1,2),]), bty = "n", pch=20 , col=colors_in , text.col = "grey", cex=1.2, pt.cex=3)
 ```
 
-##### Bike/OtherTransp 
+###### Bike/OtherTransp 
 
 ```{r}
 #Create Data Frame of Ethnicity Percentage
@@ -468,155 +545,63 @@ a1 <- data.frame((sum(bikeOI$Hispanic_total)/sum(bikeOI$TotalPop))*100, (sum(bik
 )
 #Rename columns
 colnames(a1) <- c("Hispanic" , "White", "Black", "Native", "Asian")
+rownames(a1) <- c("Biking/Other")
+
+#Merge two dataframes together
+a1 <- rbind(a1, allNYC)
 
 #Make min and max values for each column
 a1 <- rbind(rep(60,5) , rep(0,5) , a1)
-```
 
-Now we will make our radar chart
-```{r}
 #Custom the radarChart 
-radarchart(a1  , axistype=2 , 
+colors_border=c( rgb(0.2,0.5,0.5,0.9), rgb(0.9,0.1,0.1,1.0) )
+colors_in=c( rgb(0.2,0.5,0.5,0.4), rgb(0.9,0.1,0.1,0.5) )
+radarchart(a1, axistype=2 , 
  
     #custom polygon
-    pcol=rgb(0.2,0.5,0.5,0.9) , pfcol=rgb(0.2,0.5,0.5,0.5) , plwd=4 , 
+    pcol=colors_border , pfcol=colors_in , plwd=4 , plty=1,
  
     #custom the grid
-    cglcol="grey", cglty=1, axislabcol="grey", caxislabels=seq(0,100,10), cglwd=0.8,
+    cglcol="black", cglty=1, axislabcol="black", caxislabels=seq(0,60,10), cglwd=0.8,
  
     #custom labels
     vlcex=0.8 
     )
+legend(x=0.7, y=1.1, legend = rownames(a1[-c(1,2),]), bty = "n", pch=20 , col=colors_in , text.col = "grey", cex=1.2, pt.cex=3)
 ```
 
-#############################################################################
 
-##### Drive 
+####################################################################
+
+
+#### Distribution of Transportation categories by Income
+Union all Data Sets
 
 ```{r}
-#Create Data Frame of Ethnicity Percentage
-a1 <- data.frame((sum(driveOI$Professional_total)/sum(driveOI$TotalPop))*100, (sum(driveOI$Service_total)/sum(driveOI$TotalPop))*100,
-(sum(driveOI$Office_total)/sum(driveOI$TotalPop))*100,               
-(sum(driveOI$Construction_total)/sum(driveOI$TotalPop))*100,
-(sum(driveOI$Production_total)/sum(driveOI$TotalPop))*100
-)
-#Rename columns
-colnames(a1) <- c("Professional" , "Service", "Office", "Construction", "Production")
-
-#Make min and max values for each column
-a1 <- rbind(rep(50,5) , rep(0,5) , a1)
+#Create a column for Type
+driveOI$Type <- c("driveOI")
+carpoolOI$Type <- c("carpoolOI")
+walkOI$Type <- c("walkOI")
+bikeOI$Type <- c("bikeOI")
 ```
 
-Now we will make out radar chart
 
 ```{r}
-#Custom the radarChart 
-radarchart(a1  , axistype=2 , 
- 
-    #custom polygon
-    pcol=rgb(0.8,0.4,0.5,0.9) , pfcol=rgb(0.8,0.4,0.5,0.9) , plwd=4 , 
- 
-    #custom the grid
-    cglcol="grey", cglty=1, axislabcol="grey", caxislabels=seq(0,50,10), cglwd=0.8,
- 
-    #custom labels
-    vlcex=0.8 
-    )
+#Combine all overindexing rows
+totalOI <- rbind(driveOI, carpoolOI, walkOI, bikeOI)
 ```
 
-##### Walk
+Make density Plot
 
 ```{r}
-#Create Data Frame of Ethnicity Percentage
-a1 <- data.frame((sum(walkOI$Professional_total)/sum(walkOI$TotalPop))*100, (sum(walkOI$Service_total)/sum(walkOI$TotalPop))*100,
-(sum(walkOI$Office_total)/sum(walkOI$TotalPop))*100,               
-(sum(walkOI$Construction_total)/sum(walkOI$TotalPop))*100,
-(sum(walkOI$Production_total)/sum(walkOI$TotalPop))*100
-)
-#Rename columns
-colnames(a1) <- c("Professional" , "Service", "Office", "Construction", "Production")
+cdat <- mean(dataNYC$IncomePerCap)
 
-#Make min and max values for each column
-a1 <- rbind(rep(60,5) , rep(0,5) , a1)
+OIdat <- ddply(totalOI, "Type", summarise, MeanIncome.mean=mean(IncomePerCap))
+
+g <- ggplot(totalOI, aes(x=IncomePerCap, fill=Type)) + geom_histogram(alpha=0.8, show.legend = FALSE, bins=75) + facet_grid(Type ~ .) + scale_fill_brewer(palette="Set1") + theme_bw()
+g <- g + geom_vline( aes(xintercept=cdat),linetype="dashed", size=1, colour="red") + geom_vline(data=OIdat, aes(xintercept=MeanIncome.mean),linetype="dashed", size=1, colour="darkgreen")
+g <- g + labs(y="Income Per Capita", title = "Income") + scale_x_continuous(breaks=seq(0,100000,50000)) + xlim(0,100000)
+g
 ```
 
-Now we will make our radar chart
-```{r}
-#Custom the radarChart 
-radarchart(a1  , axistype=2 , 
- 
-    #custom polygon
-    pcol=rgb(0.8,0.4,0.5,0.9) , pfcol=rgb(0.8,0.4,0.5,0.9) , plwd=4 , 
- 
-    #custom the grid
-    cglcol="grey", cglty=1, axislabcol="grey", caxislabels=seq(0,100,10), cglwd=0.8,
- 
-    #custom labels
-    vlcex=0.8 
-    )
-```
-
-##### Carpool 
-
-```{r}
-#Create Data Frame of Ethnicity Percentage
-a1 <- data.frame((sum(carpoolOI$Professional_total)/sum(carpoolOI$TotalPop))*100, (sum(carpoolOI$Service_total)/sum(carpoolOI$TotalPop))*100,
-(sum(carpoolOI$Office_total)/sum(carpoolOI$TotalPop))*100,               
-(sum(carpoolOI$Construction_total)/sum(carpoolOI$TotalPop))*100,
-(sum(carpoolOI$Production_total)/sum(carpoolOI$TotalPop))*100
-)
-#Rename columns
-colnames(a1) <- c("Professional" , "Service", "Office", "Construction", "Production")
-
-#Make min and max values for each column
-a1 <- rbind(rep(50,5) , rep(0,5) , a1)
-```
-
-Now we will make our radar chart
-```{r}
-#Custom the radarChart 
-radarchart(a1  , axistype=2 , 
- 
-    #custom polygon
-    pcol=rgb(0.8,0.4,0.5,0.9) , pfcol=rgb(0.8,0.4,0.5,0.9) , plwd=4 , 
- 
-    #custom the grid
-    cglcol="grey", cglty=1, axislabcol="grey", caxislabels=seq(0,100,10), cglwd=0.8,
- 
-    #custom labels
-    vlcex=0.8 
-    )
-```
-
-##### Bike/OtherTransp 
-
-```{r}
-#Create Data Frame of Ethnicity Percentage
-a1 <- data.frame((sum(bikeOI$Professional_total)/sum(bikeOI$TotalPop))*100, (sum(bikeOI$Service_total)/sum(bikeOI$TotalPop))*100,
-(sum(bikeOI$Office_total)/sum(bikeOI$TotalPop))*100,               
-(sum(bikeOI$Construction_total)/sum(bikeOI$TotalPop))*100,
-(sum(bikeOI$Production_total)/sum(bikeOI$TotalPop))*100
-)
-#Rename columns
-colnames(a1) <- c("Professional" , "Service", "Office", "Construction", "Production")
-
-#Make min and max values for each column
-a1 <- rbind(rep(60,5) , rep(0,5) , a1)
-```
-
-Now we will make our radar chart
-```{r}
-#Custom the radarChart 
-radarchart(a1  , axistype=2 , 
- 
-    #custom polygon
-    pcol=rgb(0.8,0.4,0.5,0.9) , pfcol=rgb(0.8,0.4,0.5,0.9) , plwd=4 , 
- 
-    #custom the grid
-    cglcol="grey", cglty=1, axislabcol="grey", caxislabels=seq(0,100,10), cglwd=0.8,
- 
-    #custom labels
-    vlcex=0.8 
-    )
-```
 
