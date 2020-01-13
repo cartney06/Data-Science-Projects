@@ -1,4 +1,4 @@
-# *Commuting in New York City*
+# *__Commuting in New York City__*
 ## Project Description
 We all know that commuting in New York City is a pain. This poster highlights the neighborhoods that have the longest commute times as well as how New Yorker's commute to work. From the analysis, I came across the following conclustions:
 - Residents in the outer Boroughs have the longest commute (no surprise here).
