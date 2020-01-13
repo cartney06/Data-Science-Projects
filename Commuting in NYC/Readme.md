@@ -6,7 +6,7 @@ We all know that commuting in New York City is a pain. This poster highlights th
 - New Yorkers that walk, bike, or take the ferry to work, on average, tend to have higher incomes than the average New Yorker
 
 ## Poster Overview
-![Image of Commute_Poster](images/Commuting_in_NYC.PNG)
+![Image of Commute_Poster](images/Commuting_in_NYC.PNG) 
 
 ## Required Tools
 R, Adobe Illustrator
