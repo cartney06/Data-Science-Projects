@@ -1,0 +1,622 @@
+---
+title: "IST 719 - Final Project"
+author: "Cartney Thompson"
+date: "6/3/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)
+library(tmap)
+library(sf)
+library(raster)
+library(spData)
+library(fmsb)
+```
+
+## Commuting in NYC
+
+### Load Data
+
+```{r}
+data <- read.csv("/Users/adthom0225/Desktop/Syracuse/Data Science Masters/Syracuse/Spring 2019/IST 719/Project/nyc_census_tracts.csv")
+```
+
+### Data Cleaning
+
+Next we will reformat data to exclude Staten Island
+```{r}
+dataNYC <- filter(data, Borough != 'Staten Island')
+#Gather complete Cases only
+dataNYC <- dataNYC[complete.cases(dataNYC), ]
+
+```
+
+Now, we will create an index for commute type
+
+```{r}
+dataNYC$DriveIndex <- dataNYC$Drive/mean(dataNYC$Drive, na.rm=TRUE)
+dataNYC$CarpoolIndex <- dataNYC$Carpool/mean(dataNYC$Carpool, na.rm=TRUE)
+dataNYC$TransitIndex <- dataNYC$Transit/mean(dataNYC$Transit, na.rm=TRUE)
+dataNYC$WalkIndex <- dataNYC$Walk/mean(dataNYC$Walk, na.rm=TRUE)
+dataNYC$BikeIndex <- dataNYC$OtherTransp/mean(dataNYC$OtherTransp, na.rm=TRUE)
+```
+
+We will create a column for which ethnicty is marjority for a census tract
+
+```{r}
+dataNYC$Dominant_Ethnicity <- colnames(dataNYC[7:11])[max.col(dataNYC[7:11],ties.method="first")]
+```
+
+Next we will convert ethnicity data to raw numbers
+
+```{r}
+#Create columns that convert percentages to decimals
+dataNYC$Hispanic_percent <- dataNYC$Hispanic/100
+dataNYC$White_percent <- dataNYC$White/100
+dataNYC$Black_percent <- dataNYC$Black/100
+dataNYC$Native_percent <- dataNYC$Native/100
+dataNYC$Asian_percent <- dataNYC$Asian/100
+
+dataNYC$Professional_percent <- dataNYC$Professional/100
+dataNYC$Service_percent <- dataNYC$Service/100
+dataNYC$Office_percent <- dataNYC$Office/100
+dataNYC$Construction_percent <- dataNYC$Construction/100
+dataNYC$Production_percent <- dataNYC$Production/100
+
+#Create columns that provide number of people 
+dataNYC$Hispanic_total <- round(dataNYC$Hispanic_percent*dataNYC$TotalPop, 0)
+dataNYC$White_total <- round(dataNYC$White_percent*dataNYC$TotalPop, 0)
+dataNYC$Black_total <- round(dataNYC$Black_percent*dataNYC$TotalPop, 0)
+dataNYC$Native_total <- round(dataNYC$Native_percent*dataNYC$TotalPop, 0)
+dataNYC$Asian_total <- round(dataNYC$Asian_percent*dataNYC$TotalPop, 0)
+
+dataNYC$Professional_total <- round(dataNYC$Professional_percent*dataNYC$TotalPop, 0)
+dataNYC$Service_total <- round(dataNYC$Service_percent*dataNYC$TotalPop, 0)
+dataNYC$Office_total <- round(dataNYC$Office_percent*dataNYC$TotalPop, 0)
+dataNYC$Construction_total <- round(dataNYC$Construction_percent*dataNYC$TotalPop, 0)
+dataNYC$Production_total <- round(dataNYC$Production_percent*dataNYC$TotalPop, 0)
+```
+
+Next, create a dataframe for highly indexing
+
+```{r}
+#Over indexing
+driveOI <- dataNYC[dataNYC$DriveIndex >= 2,]
+carpoolOI <- dataNYC[dataNYC$CarpoolIndex >= 2,]
+transitOI <- dataNYC[dataNYC$TransitIndex >= 2,]
+walkOI <- dataNYC[dataNYC$WalkIndex >= 2,]
+bikeOI <- dataNYC[dataNYC$BikeIndex >= 2,]
+```
+
+### Question 1: Which New Yorkers have the longest commute times?
+
+```{r}
+#Boxplot
+g <- ggplot(dataNYC, aes(x=Borough, y=MeanCommute, fill=Borough))
+g <- g + geom_boxplot(alpha=0.8, show.legend = FALSE) + coord_flip()
+g <- g + labs(y="Average Commute", title = "Mean Commute Time", subtitle = "By Borough")  + scale_fill_brewer(palette="Blues") + theme_bw()
+g
+```
+
+```{r}
+#Scatterplot of commute times by income
+g <- ggplot(dataNYC, aes(x = MeanCommute, y=IncomePerCap, size = TotalPop, color = Borough)) 
+g <- g + geom_point(show.legend = FALSE, alpha = 0.5)
+g <- g + labs(x = "Average Commute", y = "Income Per Capita", title="Scatterplot of Average Commute vs. Income") + theme_bw() +  scale_color_brewer(palette="Blues")
+g
+```
+
+
+```{r}
+#Boxplot - by Ethnicity
+g <- ggplot(dataNYC, aes(x=Dominant_Ethnicity, y=MeanCommute, fill=Dominant_Ethnicity))
+g <- g + geom_boxplot(alpha=0.8, show.legend = FALSE) + coord_flip()
+g <- g + labs(y="Average Commute", x= "Dominant Ethnicity in Census Tract",title = "Mean Commute Time", subtitle = "By Ethnicity")  + scale_fill_brewer(palette="Blues") + theme_bw()
+g
+```
+
+
+```{r}
+tm_shape(lnd) +
+  tm_fill() +
+  tm_borders() 
+```
+
+```{r}
+library(httr)
+library(broom)
+
+r <- GET('http://data.beta.nyc//dataset/0ff93d2d-90ba-457c-9f7e-39e47bf2ac5f/resource/35dd04fb-81b3-479b-a074-a27a37888ce7/download/d085e2f8d0b54d4590b1e7d1f35594c1pediacitiesnycneighborhoods.geojson')
+
+nyc_neighborhoods <- readOGR(content(r,'text'), 'OGRGeoJSON', verbose = F)
+```
+
+```{r}
+summary(nyc_neighborhoods)
+```
+
+```{r}
+nyc_neighborhoods_df <- tidy(nyc_neighborhoods)
+```
+
+```{r}
+ggplot() + 
+  geom_polygon(data=nyc_neighborhoods_df, aes(x=long, y=lat, group=group))
+```
+
+Create the shp gile for New York City
+```{r}
+# Create shp file
+shp <- st_read("path_to_downloaded_file/acs_2012_2016_county_us_B27001.shp",
+               stringsAsFactors = FALSE) %>%
+  rename(uninsured_2012 = un_2012,
+         uninsured_2016 = un_2016,
+         uninsured_diff = unnsrd_) %>%
+  mutate(STFIPS = stringr::str_sub(GEOID, 1, 2))
+```
+
+#### Question #2: How do New Yorkers get to work?
+
+```{r}
+#Create a dataframe of how NYC gets to work
+commuteType <- select(dataNYC, CensusTract, County, Borough, TotalPop, Drive, Carpool, Transit, Walk, OtherTransp, WorkAtHome, MeanCommute)
+
+#Gather complete Cases only
+commuteType <- commuteType[complete.cases(commuteType), ]
+
+#Create columns that convert percentages to decimals
+commuteType <- mutate(commuteType,
+                      Drive_percent = Drive/100,
+                      Carpool_percent = Carpool/100,
+                      Transit_percent = Transit/100,
+                      Walk_percent = Walk/100,
+                      OtherTransp_percent = OtherTransp/100,
+                      WorkAtHome_percent = WorkAtHome/100)
+
+#Create columns that provide number of people for each commute type
+commuteType <- mutate(commuteType,
+                      Drive_total = round(Drive_percent*TotalPop, 0),
+                      Carpool_total = round(Carpool_percent*TotalPop,0),
+                      Transit_total = round(Transit_percent*TotalPop,0),
+                      Walk_total = round(Walk_percent*TotalPop,0),
+                      OtherTransp_total = round(OtherTransp_percent*TotalPop,0),
+                      WorkAtHome_total = round(WorkAtHome_percent*TotalPop,0))
+
+commuteType$TotalPop_rev <- rowSums(commuteType[,c("Drive_total", "Carpool_total", "Transit_total", "Walk_total", "OtherTransp_total")])
+```
+
+Next, we will create our columns of percent of user by commute Type
+
+```{r}
+output <- summarise(commuteType, 
+                   Drive = sum(Drive_total)/sum(TotalPop_rev),
+                   Carpool = sum(Carpool_total)/sum(TotalPop_rev),
+                   Transit = sum(Transit_total)/sum(TotalPop_rev),
+                   Walk = sum(Walk_total)/sum(TotalPop_rev),
+                   OtherTransp = sum(OtherTransp_total)/sum(TotalPop_rev))
+```
+
+```{r}
+output <- t(output)
+output <- data.frame(row.names(output), output, row.names = NULL)
+names(output) <- c("category", "fraction")
+```
+
+Next, we will make our donut plots
+```{r}
+dat = output[order(output$fraction), ]
+dat$ymax = cumsum(dat$fraction)
+dat$ymin = c(0, head(dat$ymax, n=-1))
+```
+
+
+##### Total 
+```{r}
+# Make the plot
+g1 <- ggplot(dat, aes(fill=category, ymax=ymax, ymin=ymin, xmax=4, xmin=3)) +
+     geom_rect(colour="grey30") +
+     coord_polar(theta="y") +
+     xlim(c(0, 4)) +
+     theme_bw() + theme(panel.grid=element_blank()) +
+     theme(axis.text=element_blank()) +
+     theme(axis.ticks=element_blank()) +
+     labs(title="Customized ring plot") +  scale_fill_brewer(palette="Blues")
+g1
+```
+
+##### Transit 
+
+```{r}
+other <- data.frame("Other", sum(output[output$category != "Transit",]$fraction))
+names(other)<-c("category","fraction")
+transit <- output[output$category == "Transit",]
+transit <- rbind(transit, other)
+transit <- transit[order(transit$fraction), ]
+transit$ymax <- cumsum(transit$fraction)
+transit$ymin <- c(0, head(transit$ymax, n=-1))
+```
+
+
+```{r}
+# Make the plot
+g1 <- ggplot(transit, aes(fill=category, ymax=ymax, ymin=ymin, xmax=4, xmin=3)) +
+     geom_rect(colour="grey30") +
+     coord_polar(theta="y") +
+     xlim(c(0, 4)) +
+     theme_bw() + theme(panel.grid=element_blank()) +
+     theme(axis.text=element_blank()) +
+     theme(axis.ticks=element_blank()) +
+     labs(title="Transit") +  scale_fill_manual(values = c("#153E7E", "#C0C0C0"))
+g1
+```
+
+##### Drive 
+
+```{r}
+other <- data.frame("Other", sum(output[output$category != "Drive",]$fraction))
+names(other)<-c("category","fraction")
+drive <- output[output$category == "Drive",]
+drive <- rbind(drive, other)
+drive <- drive[order(drive$fraction), ]
+drive$ymax <- cumsum(drive$fraction)
+drive$ymin <- c(0, head(drive$ymax, n=-1))
+```
+
+
+```{r}
+# Make the plot
+g1 <- ggplot(drive, aes(fill=category, ymax=ymax, ymin=ymin, xmax=4, xmin=3)) +
+     geom_rect(colour="grey30") +
+     coord_polar(theta="y") +
+     xlim(c(0, 4)) +
+     theme_bw() + theme(panel.grid=element_blank()) +
+     theme(axis.text=element_blank()) +
+     theme(axis.ticks=element_blank()) +
+     labs(title="Drive") +  scale_fill_manual(values = c("#153E7E", "#C0C0C0"))
+g1
+```
+
+##### Walk 
+
+```{r}
+other <- data.frame("Other", sum(output[output$category != "Walk",]$fraction))
+names(other)<-c("category","fraction")
+walk <- output[output$category == "Walk",]
+walk <- rbind(walk, other)
+walk <- walk[order(walk$fraction), ]
+walk$ymax <- cumsum(walk$fraction)
+walk$ymin <- c(0, head(walk$ymax, n=-1))
+```
+
+
+```{r}
+# Make the plot
+g1 <- ggplot(walk, aes(fill=category, ymax=ymax, ymin=ymin, xmax=4, xmin=3)) +
+     geom_rect(colour="grey30") +
+     coord_polar(theta="y") +
+     xlim(c(0, 4)) +
+     theme_bw() + theme(panel.grid=element_blank()) +
+     theme(axis.text=element_blank()) +
+     theme(axis.ticks=element_blank()) +
+     labs(title="Walk") +  scale_fill_manual(values = c("#153E7E", "#C0C0C0"))
+g1
+```
+
+##### Carpool 
+
+```{r}
+other <- data.frame("Other", sum(output[output$category != "Carpool",]$fraction))
+names(other)<-c("category","fraction")
+carpool <- output[output$category == "Carpool",]
+carpool <- rbind(carpool, other)
+carpool <- carpool[order(carpool$fraction), ]
+carpool$ymax <- cumsum(carpool$fraction)
+carpool$ymin <- c(0, head(carpool$ymax, n=-1))
+```
+
+
+```{r}
+# Make the plot
+g1 <- ggplot(carpool, aes(fill=category, ymax=ymax, ymin=ymin, xmax=4, xmin=3)) +
+     geom_rect(colour="grey30") +
+     coord_polar(theta="y") +
+     xlim(c(0, 4)) +
+     theme_bw() + theme(panel.grid=element_blank()) +
+     theme(axis.text=element_blank()) +
+     theme(axis.ticks=element_blank()) +
+     labs(title="Carpool") +  scale_fill_manual(values = c("#153E7E", "#C0C0C0"))
+g1
+```
+
+##### Bike/OtherTransp 
+
+```{r}
+other <- data.frame("Other", sum(output[output$category != "OtherTransp",]$fraction))
+names(other)<-c("category","fraction")
+bike <- output[output$category == "OtherTransp",]
+bike <- rbind(bike, other)
+bike <- bike[order(bike$fraction), ]
+bike$ymax <- cumsum(bike$fraction)
+bike$ymin <- c(0, head(bike$ymax, n=-1))
+```
+
+
+```{r}
+# Make the plot
+g1 <- ggplot(bike, aes(fill=category, ymax=ymax, ymin=ymin, xmax=4, xmin=3)) +
+     geom_rect(colour="grey30") +
+     coord_polar(theta="y") +
+     xlim(c(0, 4)) +
+     theme_bw() + theme(panel.grid=element_blank()) +
+     theme(axis.text=element_blank()) +
+     theme(axis.ticks=element_blank()) +
+     labs(title="Bike") +  scale_fill_manual(values = c("#153E7E", "#C0C0C0"))
+g1
+```
+
+#### Question #3: For each neighborhood that over indexe for the above, what do we know about those neighborhoods?
+
+
+##### Drive 
+
+```{r}
+#Create Data Frame of Ethnicity Percentage
+a1 <- data.frame((sum(driveOI$Hispanic_total)/sum(driveOI$TotalPop))*100, (sum(driveOI$White_total)/sum(driveOI$TotalPop))*100,
+(sum(driveOI$Black_total)/sum(driveOI$TotalPop))*100,               
+(sum(driveOI$Native_total)/sum(driveOI$TotalPop))*100,
+(sum(driveOI$Asian_total)/sum(driveOI$TotalPop))*100
+)
+#Rename columns
+colnames(a1) <- c("Hispanic" , "White", "Black", "Native", "Asian")
+
+#Make min and max values for each column
+a1 <- rbind(rep(50,5) , rep(0,5) , a1)
+```
+
+Now we will make out radar chart
+
+```{r}
+#Custom the radarChart 
+radarchart(a1  , axistype=2 , 
+ 
+    #custom polygon
+    pcol=rgb(0.2,0.5,0.5,0.9) , pfcol=rgb(0.2,0.5,0.5,0.5) , plwd=4 , 
+ 
+    #custom the grid
+    cglcol="grey", cglty=1, axislabcol="grey", caxislabels=seq(0,50,10), cglwd=0.8,
+ 
+    #custom labels
+    vlcex=0.8 
+    )
+```
+
+##### Walk
+
+```{r}
+#Create Data Frame of Ethnicity Percentage
+a1 <- data.frame((sum(walkOI$Hispanic_total)/sum(walkOI$TotalPop))*100, (sum(walkOI$White_total)/sum(walkOI$TotalPop))*100,
+(sum(walkOI$Black_total)/sum(walkOI$TotalPop))*100,               
+(sum(walkOI$Native_total)/sum(walkOI$TotalPop))*100,
+(sum(walkOI$Asian_total)/sum(walkOI$TotalPop))*100
+)
+#Rename columns
+colnames(a1) <- c("Hispanic" , "White", "Black", "Native", "Asian")
+
+#Make min and max values for each column
+a1 <- rbind(rep(60,5) , rep(0,5) , a1)
+```
+
+Now we will make our radar chart
+```{r}
+#Custom the radarChart 
+radarchart(a1  , axistype=2 , 
+ 
+    #custom polygon
+    pcol=rgb(0.2,0.5,0.5,0.9) , pfcol=rgb(0.2,0.5,0.5,0.5) , plwd=4 , 
+ 
+    #custom the grid
+    cglcol="grey", cglty=1, axislabcol="grey", caxislabels=seq(0,100,10), cglwd=0.8,
+ 
+    #custom labels
+    vlcex=0.8 
+    )
+```
+
+##### Carpool 
+
+```{r}
+#Create Data Frame of Ethnicity Percentage
+a1 <- data.frame((sum(carpoolOI$Hispanic_total)/sum(carpoolOI$TotalPop))*100, (sum(carpoolOI$White_total)/sum(carpoolOI$TotalPop))*100,
+(sum(carpoolOI$Black_total)/sum(carpoolOI$TotalPop))*100,               
+(sum(carpoolOI$Native_total)/sum(carpoolOI$TotalPop))*100,
+(sum(carpoolOI$Asian_total)/sum(carpoolOI$TotalPop))*100
+)
+#Rename columns
+colnames(a1) <- c("Hispanic" , "White", "Black", "Native", "Asian")
+
+#Make min and max values for each column
+a1 <- rbind(rep(50,5) , rep(0,5) , a1)
+```
+
+Now we will make our radar chart
+```{r}
+#Custom the radarChart 
+radarchart(a1  , axistype=2 , 
+ 
+    #custom polygon
+    pcol=rgb(0.2,0.5,0.5,0.9) , pfcol=rgb(0.2,0.5,0.5,0.5) , plwd=4 , 
+ 
+    #custom the grid
+    cglcol="grey", cglty=1, axislabcol="grey", caxislabels=seq(0,100,10), cglwd=0.8,
+ 
+    #custom labels
+    vlcex=0.8 
+    )
+```
+
+##### Bike/OtherTransp 
+
+```{r}
+#Create Data Frame of Ethnicity Percentage
+a1 <- data.frame((sum(bikeOI$Hispanic_total)/sum(bikeOI$TotalPop))*100, (sum(bikeOI$White_total)/sum(bikeOI$TotalPop))*100,
+(sum(bikeOI$Black_total)/sum(bikeOI$TotalPop))*100,               
+(sum(bikeOI$Native_total)/sum(bikeOI$TotalPop))*100,
+(sum(bikeOI$Asian_total)/sum(bikeOI$TotalPop))*100
+)
+#Rename columns
+colnames(a1) <- c("Hispanic" , "White", "Black", "Native", "Asian")
+
+#Make min and max values for each column
+a1 <- rbind(rep(60,5) , rep(0,5) , a1)
+```
+
+Now we will make our radar chart
+```{r}
+#Custom the radarChart 
+radarchart(a1  , axistype=2 , 
+ 
+    #custom polygon
+    pcol=rgb(0.2,0.5,0.5,0.9) , pfcol=rgb(0.2,0.5,0.5,0.5) , plwd=4 , 
+ 
+    #custom the grid
+    cglcol="grey", cglty=1, axislabcol="grey", caxislabels=seq(0,100,10), cglwd=0.8,
+ 
+    #custom labels
+    vlcex=0.8 
+    )
+```
+
+#############################################################################
+
+##### Drive 
+
+```{r}
+#Create Data Frame of Ethnicity Percentage
+a1 <- data.frame((sum(driveOI$Professional_total)/sum(driveOI$TotalPop))*100, (sum(driveOI$Service_total)/sum(driveOI$TotalPop))*100,
+(sum(driveOI$Office_total)/sum(driveOI$TotalPop))*100,               
+(sum(driveOI$Construction_total)/sum(driveOI$TotalPop))*100,
+(sum(driveOI$Production_total)/sum(driveOI$TotalPop))*100
+)
+#Rename columns
+colnames(a1) <- c("Professional" , "Service", "Office", "Construction", "Production")
+
+#Make min and max values for each column
+a1 <- rbind(rep(50,5) , rep(0,5) , a1)
+```
+
+Now we will make out radar chart
+
+```{r}
+#Custom the radarChart 
+radarchart(a1  , axistype=2 , 
+ 
+    #custom polygon
+    pcol=rgb(0.8,0.4,0.5,0.9) , pfcol=rgb(0.8,0.4,0.5,0.9) , plwd=4 , 
+ 
+    #custom the grid
+    cglcol="grey", cglty=1, axislabcol="grey", caxislabels=seq(0,50,10), cglwd=0.8,
+ 
+    #custom labels
+    vlcex=0.8 
+    )
+```
+
+##### Walk
+
+```{r}
+#Create Data Frame of Ethnicity Percentage
+a1 <- data.frame((sum(walkOI$Professional_total)/sum(walkOI$TotalPop))*100, (sum(walkOI$Service_total)/sum(walkOI$TotalPop))*100,
+(sum(walkOI$Office_total)/sum(walkOI$TotalPop))*100,               
+(sum(walkOI$Construction_total)/sum(walkOI$TotalPop))*100,
+(sum(walkOI$Production_total)/sum(walkOI$TotalPop))*100
+)
+#Rename columns
+colnames(a1) <- c("Professional" , "Service", "Office", "Construction", "Production")
+
+#Make min and max values for each column
+a1 <- rbind(rep(60,5) , rep(0,5) , a1)
+```
+
+Now we will make our radar chart
+```{r}
+#Custom the radarChart 
+radarchart(a1  , axistype=2 , 
+ 
+    #custom polygon
+    pcol=rgb(0.8,0.4,0.5,0.9) , pfcol=rgb(0.8,0.4,0.5,0.9) , plwd=4 , 
+ 
+    #custom the grid
+    cglcol="grey", cglty=1, axislabcol="grey", caxislabels=seq(0,100,10), cglwd=0.8,
+ 
+    #custom labels
+    vlcex=0.8 
+    )
+```
+
+##### Carpool 
+
+```{r}
+#Create Data Frame of Ethnicity Percentage
+a1 <- data.frame((sum(carpoolOI$Professional_total)/sum(carpoolOI$TotalPop))*100, (sum(carpoolOI$Service_total)/sum(carpoolOI$TotalPop))*100,
+(sum(carpoolOI$Office_total)/sum(carpoolOI$TotalPop))*100,               
+(sum(carpoolOI$Construction_total)/sum(carpoolOI$TotalPop))*100,
+(sum(carpoolOI$Production_total)/sum(carpoolOI$TotalPop))*100
+)
+#Rename columns
+colnames(a1) <- c("Professional" , "Service", "Office", "Construction", "Production")
+
+#Make min and max values for each column
+a1 <- rbind(rep(50,5) , rep(0,5) , a1)
+```
+
+Now we will make our radar chart
+```{r}
+#Custom the radarChart 
+radarchart(a1  , axistype=2 , 
+ 
+    #custom polygon
+    pcol=rgb(0.8,0.4,0.5,0.9) , pfcol=rgb(0.8,0.4,0.5,0.9) , plwd=4 , 
+ 
+    #custom the grid
+    cglcol="grey", cglty=1, axislabcol="grey", caxislabels=seq(0,100,10), cglwd=0.8,
+ 
+    #custom labels
+    vlcex=0.8 
+    )
+```
+
+##### Bike/OtherTransp 
+
+```{r}
+#Create Data Frame of Ethnicity Percentage
+a1 <- data.frame((sum(bikeOI$Professional_total)/sum(bikeOI$TotalPop))*100, (sum(bikeOI$Service_total)/sum(bikeOI$TotalPop))*100,
+(sum(bikeOI$Office_total)/sum(bikeOI$TotalPop))*100,               
+(sum(bikeOI$Construction_total)/sum(bikeOI$TotalPop))*100,
+(sum(bikeOI$Production_total)/sum(bikeOI$TotalPop))*100
+)
+#Rename columns
+colnames(a1) <- c("Professional" , "Service", "Office", "Construction", "Production")
+
+#Make min and max values for each column
+a1 <- rbind(rep(60,5) , rep(0,5) , a1)
+```
+
+Now we will make our radar chart
+```{r}
+#Custom the radarChart 
+radarchart(a1  , axistype=2 , 
+ 
+    #custom polygon
+    pcol=rgb(0.8,0.4,0.5,0.9) , pfcol=rgb(0.8,0.4,0.5,0.9) , plwd=4 , 
+ 
+    #custom the grid
+    cglcol="grey", cglty=1, axislabcol="grey", caxislabels=seq(0,100,10), cglwd=0.8,
+ 
+    #custom labels
+    vlcex=0.8 
+    )
+```
+
