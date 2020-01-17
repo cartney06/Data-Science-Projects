@@ -1,1 +1,7 @@
-# Beer Recommendation System
+# **Beer Recommendation System**
+
+## Overview
+
+## About the Project
+
+## Findings
