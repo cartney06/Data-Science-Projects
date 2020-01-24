@@ -1,3 +1,5 @@
+# **Exploring Restaurant Sanitation Grades**
+
 ## Overview
 
 ## About the Project
