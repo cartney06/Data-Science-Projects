@@ -29,5 +29,5 @@ For a more in depth experience about each project and my background, check out [
 
 ### [Predicting Customer Churn for a Telco Company](https://github.com/cartney06/Data-Science-Projects/tree/master/Predicting%20Customer%20Churn%20for%20a%20Telco%20Company)
 
-[Exploring Restaurant Sanitation Grades](https://github.com/cartney06/Data-Science-Projects/tree/master/Exploring%20Restaurant%20Sanitation%20Grades)
+## [Exploring Restaurant Sanitation Grades](https://github.com/cartney06/Data-Science-Projects/tree/master/Exploring%20Restaurant%20Sanitation%20Grades)
 
