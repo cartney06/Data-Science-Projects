@@ -14,21 +14,18 @@ For a more in depth experience about each project and my background, check out [
 
 ## **Projects**
 
-### [Predicting the Next Billboard Hit](https://github.com/cartney06/Data-Science-Projects/tree/master/Predicting%20the%20Next%20Billboard%20Hit)
-
-
 ### [Beer Recommendation System](https://github.com/cartney06/Data-Science-Projects/tree/master/Beer%20Recommendation%20System)
 
 
 ### [Communting in NYC](https://github.com/cartney06/Data-Science-Projects/tree/master/Commuting%20in%20NYC)
 
+### [Predicting the Next Billboard Hit](https://github.com/cartney06/Data-Science-Projects/tree/master/Predicting%20the%20Next%20Billboard%20Hit)
 
 ### [NYC Subway Ridership](https://github.com/cartney06/Data-Science-Projects/tree/master/NYC%20Subway%20Ridership)
-
 
 ### [2020 Democratic Primary - Sentiment Analysis](https://github.com/cartney06/Data-Science-Projects/2016%20Democratic%20Primary%20Analysis)
 
 ### [Noise Complaints in NYC](https://github.com/cartney06/Data-Science-Projects/tree/master/Noise%20Complaints%20in%20New%20York%20City)
 
-
+### [Predicting Customer Churn for a Telco Companu]
 
