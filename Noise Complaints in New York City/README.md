@@ -2,7 +2,7 @@
 ## Project Description
 An exploratory data analysis of noise complaints in New York City. Answers such questions as when and where do noise complaints occur most often. This was a part of a project I completed as part of Data Science program at Syracuse.
 
-Parties happen in New York City. This is not a surprise. However, often noise complaints are filed when parties occur. The questions this reports answers are the following:
+The questions this report answers are the following:
 
 - Are noise complaints likely to occur at times throughout the day/month/year? This question will be answered by the percentage of noise complaints by month, day, and hour of the day.
 - Are noise complaints more likely to come from specific areas of the city? We will answer this question based upon the percentage of noise complaints by borough.
