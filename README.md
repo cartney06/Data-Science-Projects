@@ -27,5 +27,5 @@ For a more in depth experience about each project and my background, check out [
 
 ### [Noise Complaints in NYC](https://github.com/cartney06/Data-Science-Projects/tree/master/Noise%20Complaints%20in%20New%20York%20City)
 
-### [Predicting Customer Churn for a Telco Companu]
+### [Predicting Customer Churn for a Telco Company](https://github.com/cartney06/Data-Science-Projects/tree/master/Predicting%20Customer%20Churn%20for%20a%20Telco%20Company)
 
