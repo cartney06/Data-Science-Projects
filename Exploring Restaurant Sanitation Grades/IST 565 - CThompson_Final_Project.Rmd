@@ -1,0 +1,493 @@
+---
+title: "Classification of Restaurant Closures in New York City"
+subtitle: "IST 565 - Summaer 2018 - Final Project"
+author: "Cartney Thompson"
+date: "August 30, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(dplyr)
+#library(plyr)
+library(ggplot2)
+library(readr)
+library(caret)
+library(sqldf)
+library(scales)
+library(lubridate)
+```
+
+
+## Introduction
+  Living in New York City, residents become accustomed to signs in restaurant windows highlighting letter grades. What do these letter grades mean? Since July 2010, the Health Department has required restaurants to post letter grades showing sanitary inspection results. Restaurants with a score between 0 and 13 points earn an A, those with 14 to 27 points receive a B and those with 28 or more a C. (NYC Department of Health, 2012). Summarizing sanitation scores via letter grades, acoording to the New York Department of Health, helps achieve three goals:
+  
+  * Inform the public about a restaurant's inspection results in a simple, accssible way.
+  * Improve sanitary conditions and food safety practices in restaurants
+  * Reduce illnessess associated with dining out
+  
+A number of factors go into determining the letter grade a restaurant recieves including:
+  
+  * Inspection Score
+  * Inspection Type (i.e Re-inspection, Initial Inspection)
+  * Critical Violations
+  * Inspection Violation Code
+  
+ Research has demonstrated that most bacterial, viral and contaminant-based foodborne illnesses occur because of poor hygiene, improper storage and handling, and inadequate cooling and heating of food (Citation: https://www.niddk.nih.gov/health-information/digestive-diseases/foodborne-illnesses). The New York Department of Health requires restaurants to follow food safety rules that are grounded in science and based on federal and state guidelines and laws. Before letter grading, restaurants were motivated to practice food safety by their own desire to maintain healthful conditions and by the threat of fines for violations found at the time of inspection. Grading introduced a tpotentially more significant incentive: recognition with an A grade for excellent food safety practices. (Citation: New York Department of Health, 2012)
+
+## Objective
+  The objective of this analysis is to predict if the letter grade a restaurant receives based upon violation types from a NYC Department of Health inspection. Models will be built utilizing NYC Restaurant Inspection dataset for the years 2010 - 2017 from Kaggle (Citation: https://www.kaggle.com/new-york-city/nyc-inspections/home). Modeling restaurant grades based on inspection results, helps the city allocate resources for intervention programs, food preparation education, and preventing of foodbourne illnesses to the general public.
+
+## Data Preprocessing
+
+```{r, warning=FALSE}
+project <- read_csv("DOHMH_New_York_City_Restaurant_Inspection_Results.csv", col_types = cols(DBA = col_skip(), 'GRADE DATE' = col_skip(), PHONE = col_skip(), 'RECORD DATE' = col_skip(), 'VIOLATION DESCRIPTION' = col_skip(), ZIPCODE = col_character()))
+```
+
+Change colums names with spaces
+```{r}
+colnames(project)[7] <- "INSPECTION_DATE"
+colnames(project)[6] <- "CUISINE_DESCRIPTION"
+colnames(project)[9] <- "VIOLATION_CODE"
+colnames(project)[10] <- "CRITICAL_FLAG"
+colnames(project)[13] <- "INSPECTION_TYPE"
+```
+
+Replace é with e
+```{r}
+project$CUISINE_DESCRIPTION <- gsub("Café/Coffee/Tea", "Cafe/Coffee/Tea", project$CUISINE_DESCRIPTION)
+```
+
+
+Next we take a look at out violations. 
+
+```{r}
+length(unique(project$VIOLATION_CODE))
+```
+Wow we have 98 different violation codes. That is a lot! Let's narrow this down. We can utilize the catgories provided by the NYC DOMOH here: https://www1.nyc.gov/assets/doh/downloads/pdf/rii/self-inspection-worksheet.pdf
+
+Put 98 codes into 11 different catgories based on violation codes.
+```{r}
+project$VIOLATION_CATEGORY <- ifelse(grepl("02",project$VIOLATION_CODE),"FOOD TEMPERATURE",
+ifelse(grepl("03",project$VIOLATION_CODE),"FOOD SOURCE", 
+       ifelse(grepl("04",project$VIOLATION_CODE),"FOOD PROTECTION",
+              ifelse(grepl("05",project$VIOLATION_CODE),"FACILITY",
+                     ifelse(grepl("06",project$VIOLATION_CODE),"PERSONAL HYGIENE & OTHER FOOD PROTECTION",
+                            ifelse(grepl("07",project$VIOLATION_CODE),"OTHER",
+                                   ifelse(grepl("08",project$VIOLATION_CODE),"VERMIN / GARBAGE",
+                                          ifelse(grepl("09",project$VIOLATION_CODE),"FOOD SOURCE",
+                                                 ifelse(grepl("10",project$VIOLATION_CODE),"FACILITY MAINTENANCE",
+                                                        ifelse(grepl("15",project$VIOLATION_CODE),"TOBACCO REGULATORY",
+                                                               ifelse(grepl("16",project$VIOLATION_CODE),"MENU LABELING",
+                                                                      ifelse(grepl("18",project$VIOLATION_CODE),"ADMINISTRATION, DOCUMENTATION, AND SIGNAGE",
+                                                                             ifelse(grepl("20",project$VIOLATION_CODE),"ADMINISTRATION, DOCUMENTATION, AND SIGNAGE","OTHER")))))))))))))
+```
+
+Create a CAMIS and Inspection Date Key
+```{r}
+project$KEY <- paste(project$CAMIS,project$INSPECTION_DATE)
+```
+
+Merge fields to newly created dataframe
+```{r}
+NYC_inspection <- sqldf('select CAMIS, BORO, KEY, INSPECTION_DATE, ZIPCODE, CUISINE_DESCRIPTION, MAX(SCORE) AS SCORE, MIN(GRADE) AS GRADE FROM project GROUP BY CAMIS, BORO, KEY, INSPECTION_DATE, ZIPCODE, CUISINE_DESCRIPTION')
+```
+
+```{r}
+d <- sqldf('select KEY,VIOLATION_CATEGORY FROM project GROUP BY KEY,VIOLATION_CATEGORY' )
+```
+
+```{r}
+library(reshape2)
+d$Count <- 1
+d <- dcast(d, KEY ~ VIOLATION_CATEGORY, value.var = "Count", fill =0)
+NYC_inspection <- merge(NYC_inspection, d)
+```
+
+
+
+#####################################################################
+Next, we are going to check for NAs
+
+Next we check for NAs
+
+```{r}
+colSums(is.na(NYC_inspection))
+```
+
+NAs for Score and Grades. 
+
+We will remove inspections where  scores are NAs as we cannot provide grades without scores,  For inspections that do not have a score, we will just remove those records.
+
+```{r}
+NYC_inspection <- NYC_inspection[!is.na(NYC_inspection$SCORE),]
+```
+
+Next, for grades other than A,B,C we will remove those values and fill with NAs
+
+```{r}
+NYC_inspection$GRADE <- ifelse(NYC_inspection$GRADE == 'A' ,NYC_inspection$GRADE, ifelse(NYC_inspection$GRADE =='B',NYC_inspection$GRADE, ifelse(NYC_inspection$GRADE == 'C' ,NYC_inspection$GRADE,NA)))
+```
+
+Lastly, we need to impute Grades for missing values. For this we can simply use the scores for Grades based upon NYC DOH scoring rubric:
+A: 0-13
+B: 14-27
+C: >28
+
+```{r}
+NYC_inspection$GRADE <- ifelse(!is.na(NYC_inspection[,'GRADE']), NYC_inspection$GRADE, ifelse(NYC_inspection$SCORE <=13, 'A', ifelse(NYC_inspection$SCORE>=28, "C", "B"))) 
+colSums(is.na(NYC_inspection))
+```
+
+For our columns that matter, we have no more missing values.
+
+Update Inspection Date to Date field
+```{r}
+NYC_inspection$INSPECTION_DATE <- as.Date(parse_date_time(NYC_inspection$INSPECTION_DATE, c('mdy', 'ymd')))
+```
+
+## Data Exploration
+Before we start building our classification models, we will explore the data set to derive any key insights.
+
+
+#### Inspections
+
+##### Total number of inspections
+For this data set, since there was no key to define an inspection, any restaurant that had inspections on the same day counts as one inspection.
+
+```{r}
+nrow(NYC_inspection)
+```
+In our data set, there are a total of 130,002 inspections that yielded at least a grade or a score.
+
+##### Total number of inspetions by Grade
+
+```{r}
+inspectionsByGrade <- NYC_inspection %>%
+  group_by(GRADE) %>%
+  summarise(TotalInspections = n(), PerentOfInspections = n()/nrow(NYC_inspection))
+
+inspectionsByGrade
+```
+
+```{r fig.height = 5, fig.width = 5}
+#Plot
+g <- ggplot(inspectionsByGrade, aes(x=GRADE, y=PerentOfInspections))
+g <- g + geom_col(alpha = 0.8, fill="tomato3")
+g <- g + geom_text(aes(label = scales::percent(PerentOfInspections)), vjust = -.4)
+g <- g + labs(title = "Percentage of Total Inspections", subtitle = "By Grade", x = NULL, y= "Percent of Inspections")
+g <- g + theme(axis.title.x=element_blank()) + theme_bw() + scale_y_continuous(labels = percent)
+g
+```
+
+#### Total Number of inspections by Violation Type
+```{r}
+t1 <- sqldf('select a.Key AS Key, VIOLATION_CATEGORY FROM project a JOIN NYC_inspection b ON (a.Key = b.Key) GROUP BY a.Key, VIOLATION_CATEGORY')
+
+inspectionsByViolation <- t1 %>%
+  group_by(VIOLATION_CATEGORY) %>%
+  summarise(TotalInspections = n(), PerentOfInspections = n()/nrow(NYC_inspection))%>%
+  arrange(desc(PerentOfInspections))
+inspectionsByViolation
+```
+
+```{r fig.height = 5, fig.width = 15}
+#Plot
+g <- ggplot(inspectionsByViolation, aes(x=reorder(VIOLATION_CATEGORY,PerentOfInspections) , y=PerentOfInspections))
+g <- g + geom_col(alpha = 0.8, fill="tomato3") + coord_flip()
+g <- g + geom_text(aes(label = scales::percent(PerentOfInspections)), hjust = -.2)
+g <- g + labs(title = "Percentage of Total Inspection Violations", subtitle = "By Violation Category", x = "Violation Category", y =NULL)
+g <- g + theme(axis.title.x=element_blank()) + theme_bw() + scale_y_continuous(labels = percent)
+g
+```
+
+
+#### Grade Distriution by Boro
+```{r}
+inspectionsByGradeByBoro <- NYC_inspection %>%
+  group_by(BORO, GRADE) %>%
+  summarise(TotalInspections = n())%>%
+  group_by(BORO) %>% 
+  mutate(PerentOfInspections=TotalInspections/sum(TotalInspections))
+
+inspectionsByGradeByBoro
+```
+
+```{r}
+#Plot
+g <- ggplot(inspectionsByGradeByBoro, aes(x=GRADE, y=PerentOfInspections))
+g <- g + geom_col(alpha = 0.8, fill="tomato3")
+g <- g + geom_text(aes(label = scales::percent(PerentOfInspections)), vjust = -.3, size=3)
+g <- g + labs(title = "Inspection Grade Distribution", subtitle = "By Borough", x = NULL, y="Percentage of Grades")
+g <- g + theme(axis.title.x=element_blank()) + theme_bw() + scale_y_continuous(labels = percent)
+g <- g + facet_grid(~BORO) 
+g
+```
+
+#### Grade Distribution by Cuisine
+```{r}
+inspectionsByGradeByCusine <- NYC_inspection %>%
+  group_by(CUISINE_DESCRIPTION, GRADE) %>%
+  summarise(TotalInspections = n())%>%
+  group_by(CUISINE_DESCRIPTION) %>% 
+  mutate(PerentOfInspections=TotalInspections/sum(TotalInspections), All=sum(TotalInspections))%>%
+  arrange(desc(All))
+
+#Re-factor our dataframe so restaurants (by cusisine) appear first in chart
+inspectionsByGradeByCusine$CUISINE_DESCRIPTION <- factor(inspectionsByGradeByCusine$CUISINE_DESCRIPTION, levels = unique(inspectionsByGradeByCusine$CUISINE_DESCRIPTION[order(inspectionsByGradeByCusine$All)]))
+inspectionsByGradeByCusine
+```
+
+```{r fig.height = 15, fig.width = 15}
+#Plot
+g <- ggplot(inspectionsByGradeByCusine, aes(x=CUISINE_DESCRIPTION, y=PerentOfInspections, fill=GRADE))
+g <- g + geom_bar(stat = "identity", alpha = 0.9, position = position_stack(reverse = TRUE)) + coord_flip()
+g <- g + labs(title = "Percentage of Grades", subtitle = "By Cuisine", x = NULL, y =NULL)
+g <- g + theme(axis.title.x=element_blank()) + theme_bw() + scale_y_continuous(labels = percent) + theme(legend.position="top")
+g
+```
+
+
+Sort by A Grade
+```{r fig.height = 15, fig.width = 15}
+inspectionsByGradeByCusine <- NYC_inspection %>%
+  group_by(CUISINE_DESCRIPTION, GRADE) %>%
+  summarise(TotalInspections = n())%>%
+  group_by(CUISINE_DESCRIPTION) %>% 
+  mutate(PerentOfInspections=TotalInspections/sum(TotalInspections))%>%
+  arrange(GRADE, -PerentOfInspections)
+
+
+a <- inspectionsByGradeByCusine %>%
+  filter(GRADE=='C')
+
+#Re-factor our dataframe so restaurants (by cusisine) appear first in chart
+a$CUISINE_DESCRIPTION <- factor(a$CUISINE_DESCRIPTION, levels = unique(a$CUISINE_DESCRIPTION[order(a$PerentOfInspections)]))
+
+a <- head(a, 15)
+
+
+#Plot
+g <- ggplot(a, aes(x=CUISINE_DESCRIPTION, y=PerentOfInspections, fill=GRADE))
+g <- g + geom_bar(stat = "identity", alpha = 0.9, position = position_stack(reverse = TRUE)) + coord_flip()
+g <- g + labs(title = "Percentage of Grades", subtitle = "By Cuisine", x = NULL, y =NULL)
+g <- g + theme(axis.title.x=element_blank()) + theme_bw() + scale_y_continuous(labels = percent) + theme(legend.position="top")
+g
+
+```
+
+
+Next we will eliminate attributes/features that are not helpful with prediction. 
+
+```{r}
+#Remove attributes that are not valuable
+rc <- c(1,2,4,7)
+finalProject <- NYC_inspection[,-rc]
+```
+
+
+Factor feature and Predictor columns
+```{r}
+#Move GRADE to first column in dataframe
+finalProject <- finalProject %>%
+  select(GRADE, everything())
+
+#Coerce columns to factors
+finalProject <- lapply(finalProject, factor)
+
+#Make zipcode as chr
+finalProject$ZIPCODE <- as.character(finalProject$ZIPCODE)
+
+#Make Grade an ordered factor
+finalProject$GRADE <- ordered(finalProject$GRADE)
+finalProject <- as.data.frame(finalProject)
+```
+
+
+## Feature Selection
+Utilzizing the caret package, we want to check which features maybe redundant and which ones are important
+
+#### Removing Redundant Features
+```{r}
+#Ensure the results are repeatable by setting our seed
+set.seed(7)
+#Load the library
+library(mlbench)
+
+#Calculate correlation matrix
+correlationMatrix <- cor(NYC_inspection[,9:19])
+# summarize the correlation matrix
+print(correlationMatrix)
+# find attributes that are highly corrected (ideally >0.75)
+highlyCorrelated <- findCorrelation(correlationMatrix, cutoff=0.5)
+# print indexes of highly correlated attributes
+print(highlyCorrelated)
+```
+
+#### Remove features that are not important Utilizing information Gain
+```{r}
+library(RWeka)
+
+IG <- InfoGainAttributeEval(GRADE ~ . , data = finalProject)
+
+IG
+c <- c(2, 3,  9, 11, 12, 14)
+finalProject <- finalProject[,-c]
+finalProject2 <- finalProject[,-2]
+
+```
+
+#### Rank by Feature Importance
+
+Testing
+```{r fig.height = 25, fig.width = 15}
+# ensure results are repeatable
+set.seed(7)
+# load the dataset
+data(PimaIndiansDiabetes)
+# prepare training scheme
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+# train the model
+model <- train(diabetes~., data=PimaIndiansDiabetes, method="lvq", preProcess="scale", trControl=control)
+# estimate variable importance
+importance <- varImp(model, scale=FALSE)
+# summarize importance
+print(importance)
+# plot importance
+plot(importance)
+```
+
+
+
+
+```{r}
+ct <- c(1,2,4, 9:19)
+dt <- c(1:1000)
+set.seed(9)
+#Load the library
+library(mlbench)
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+#, trControl=control
+model <- train(GRADE~., data=finalProject[dt,ct], method="rf", trControl=control)
+# estimate variable importance
+importance <- varImp(model, scale=FALSE)
+# summarize importance
+print(importance)
+# plot importance
+plot(importance)
+```
+
+
+Now that our data has gone through the preprocessing stage, we need to split our dataset into training an test data. 
+For this experiement, we are going to split 2/3 of our data into training, and the remaining 1/3 into testing.
+#### Create Training & Test Data
+```{r}
+#Get row count of data
+rowCount <- nrow(finalProject2)
+#Create trainData and testData dataset using 2/3 & 1/3 train/test split
+cutPoint <- floor((2/3)*rowCount)
+#Randomize data in train/test datasets
+rand <- sample(1:rowCount)
+#Create the train data & test data
+finalProject.train <- finalProject2[rand[1:cutPoint],]
+finalProject.test <- finalProject2[rand[(cutPoint+1):rowCount],]
+```
+
+We are all set with our data preprocessing!
+
+## Experiment
+With our data preprocessed and ready for prediction, we are going to explore predicting whether a restaurant will close based upon our features. First we will build a model using Decision trees.
+
+### Decision Trees
+First, we will explore using the default Decision Tree Model using rpart
+```{r}
+#dt1 <- train(GRADE ~ ., data=finalProject2, method = "rpart", trControl=control)
+#print(dt1)
+#finalProject.train2 <- head(finalProject.train,20000)
+
+library(rpart)
+library(rattle)
+set.seed(7)
+#control <- trainControl(method="repeatedcv", number=10, repeats=3)
+ctrl <- trainControl(method="cv", number=5)
+dt1 <- rpart(GRADE ~ ., data = finalProject.train, na.action = na.omit, method = "class")
+fancyRpartPlot(dt1, main= "Decision Classification Tree")
+```
+
+```{r}
+set.seed(7)
+pred <- predict(dt1, type="class")
+tbl <- table(pred, finalProject.train$GRADE)
+confusionMatrix(tbl)
+```
+
+```{r}
+set.seed(7)
+pred <- predict(dt1,newdata = finalProject.test,  type="class")
+tbl <- table(pred, finalProject.test$GRADE)
+fancyRpartPlot(dt1, main= "Decision Classification Tree")
+confusionMatrix(tbl)
+```
+
+
+
+
+
+Next, we will predict values using the test data
+```{r}
+newprojectModel.test2 <- newprojectModel.test
+newprojectModel.test2$CLOSUREClass <- predict(dt1, newdata = newprojectModel.test, type="raw") #Returns the predicted class
+```
+
+
+
+### Naive Baiyes Model
+First, we will explore using the default Naive Bayes Model
+```{r}
+library(klaR)
+nb1 <- suppressWarnings(train(GRADE~., data = finalProject.train, method='nb'))
+```
+
+Model Output
+```{r}
+nb1
+```
+
+Prediction
+
+```{r}
+set.seed(7)
+pred <- predict(nb1, type="raw")
+tbl <- table(pred, finalProject.train$GRADE)
+confusionMatrix(tbl)
+```
+
+
+
+```{r}
+set.seed(7)
+pred <- suppressWarnings(predict(nb1,newdata = finalProject.test,  type="raw"))
+tbl <- table(pred, finalProject.test$GRADE)
+confusionMatrix(tbl)
+```
+
+### Support Vector Machines 
+```{r}
+set.seed(1818)
+ctrl <- trainControl(method="cv", number=5)
+svm1 <- suppressWarnings(train(GRADE~., data = finalProject.train, method='svmRadial', trControl = ctrl))
+svm1
+```
+
+```{r}
+set.seed(121)
+pred <- suppressWarnings(predict(svm1,newdata = finalProject.test,  type="raw"))
+tbl <- table(pred, finalProject.test$GRADE)
+confusionMatrix(tbl)
+```
+
+#########################################################################################################
+
