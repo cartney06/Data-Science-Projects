@@ -17,4 +17,5 @@ Python 3
  - Scipy
  - Datetime
  - Matplotlib
+ - Seaborn
 
