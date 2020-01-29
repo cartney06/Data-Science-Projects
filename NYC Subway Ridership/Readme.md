@@ -17,5 +17,5 @@ Python 3
 - Prophet
 
 ## Findings
-[Forecasting NYC Subway Ridership - Jupyter Notebook](https://nbviewer.jupyter.org/github/cartney06/Data-Science-Projects/blob/master/NYC%20Subway%20Ridership/NYC%20Subway%20Forecasting%20Project%20.ipynb)
+[Forecasting NYC Subway Ridership - Jupyter Notebook](https://nbviewer.jupyter.org/github/cartney06/Data-Science-Projects/blob/master/NYC%20Subway%20Ridership/NYC%20Subway%20Forecasting%20Project.ipynb)
 
