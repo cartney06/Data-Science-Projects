@@ -13,5 +13,5 @@ Python 3
 - Prophet
 
 ## Findings
-[Forecasting NYC Subway Ridership - Jupyter Notebook (https://github.com/cartney06/Data-Science-Projects/blob/master/Predicting%20Customer%20Churn%20for%20a%20Telco%20Company/Predicting%20Churn%20for%20Telco%20Firm.ipynb) 
+[Forecasting NYC Subway Ridership - Jupyter Notebook] (https://github.com/cartney06/Data-Science-Projects/blob/master/NYC%20Subway%20Ridership/NYC%20Subway%20Forecast.ipynb) 
 
