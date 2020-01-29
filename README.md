@@ -21,6 +21,9 @@ From obtaining the data via an API, data exploration, recommendation engine mode
 ### [Communting in NYC](https://github.com/cartney06/Data-Science-Projects/tree/master/Commuting%20in%20NYC)
 A data exploration project that takes key insights about New Yorkers and their commute and displays on an informational poster.
 
+### [Nike Sentiment Analysis on Twitter](https://github.com/cartney06/Data-Science-Projects/tree/master/Nike%20Sentiment%20Analysis%20on%20Twitter)
+A sentiment analysis and data exploration project of tweest associated with Nike's Colin Kaepernick campaign that ran late summer 2018.
+
 ### [Predicting the Next Billboard Hit](https://github.com/cartney06/Data-Science-Projects/tree/master/Predicting%20the%20Next%20Billboard%20Hit)
 
 ### [NYC Subway Ridership](https://github.com/cartney06/Data-Science-Projects/tree/master/NYC%20Subway%20Ridership)
