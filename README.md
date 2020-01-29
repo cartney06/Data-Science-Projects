@@ -27,7 +27,7 @@ A sentiment analysis and data exploration project of tweest associated with Nike
 ### [Predicting the Next Billboard Hit](https://github.com/cartney06/Data-Science-Projects/tree/master/Predicting%20the%20Next%20Billboard%20Hit)
 
 ### [NYC Subway Ridership](https://github.com/cartney06/Data-Science-Projects/tree/master/NYC%20Subway%20Ridership)
-A project that displays a map of NYC Subway ridership in 2018 and builds a time series model to forecast ridership for 2019.
+A project that displays a map of NYC subway ridership in 2018 and builds a time series model to forecast ridership for 2019.
 
 ### [2020 Democratic Primary - Sentiment Analysis](https://github.com/cartney06/Data-Science-Projects/2016%20Democratic%20Primary%20Analysis)
 
