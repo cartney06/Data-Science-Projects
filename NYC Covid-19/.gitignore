@@ -22,6 +22,11 @@ logs/*day/debug.log
 logs/debug.log
 Pipfile
 .ipynb_checkpoints
+.ipynb_checkpoints/
 .DS_Store
+.DS_Store?
 random
 random/
+testing.py
+Pipfile.*
+*copy.py
