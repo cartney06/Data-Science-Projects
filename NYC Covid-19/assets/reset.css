@@ -1,0 +1,33 @@
+body {
+    background-color: #1a1c23;
+    }
+.Select-control{
+  background-color: inherit;
+  color:#b4b4b4;
+  border-color: rgba(180, 180, 180, 0.4);
+  border-radius: 20px 20px 20px 20px / 50% 50% 50% 50%;
+}
+
+.has-value.Select--single>.Select-control .Select-value .Select-value-label, .has-value.is-pseudo-focused.Select--single>.Select-control .Select-value .Select-value-label{
+    color:white
+}
+
+.Select.is-open> .Select-control{
+    border-radius: 20px 20px 20px 20px / 50% 50% 50% 50%;
+    background-color: inherit;
+  }
+
+.Select-menu-outer {
+    margin-top: 7px;
+    background-color: #262a30;
+    border: 1px solid #b4b4b4;
+    border-radius: 4px;
+    z-index: 1000;
+    color: white
+  }
+  
+.metric_dropdown{
+    width: 20%;
+    background-color: #1a1c23;
+
+}
