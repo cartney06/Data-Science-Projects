@@ -30,3 +30,7 @@ random/
 testing.py
 Pipfile.*
 *copy.py
+testing
+.ipynb_checkpoints
+ipynb_checkpoints
+ipynb_checkpoints/
