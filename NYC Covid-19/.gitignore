@@ -34,3 +34,4 @@ testing
 .ipynb_checkpoints
 ipynb_checkpoints
 ipynb_checkpoints/
+.gitignore
